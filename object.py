@@ -178,7 +178,13 @@ class ObjectDef:
             # vardef in the form of (typename varname defvalue)
             var_type = Type(var_def[0])
             var_name = var_def[1]
-            default_value = create_value(var_def[2])
+
+            #set defualt value for local variable
+            if len(var_def) == 2:
+                default_value = create_default_value(var_type)
+            else:
+                default_value = create_value(var_def[2])
+                
             # make sure default value for each local is of a matching type
             self.__check_type_compatibility(
                 var_type, default_value.type(), True, line_number

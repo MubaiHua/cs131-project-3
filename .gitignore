@@ -133,3 +133,6 @@ dmypy.json
 
 #remove intbase
 intbase.py
+
+#remove test program
+program.txt

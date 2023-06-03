@@ -36,7 +36,8 @@
 """
 
 from intbase import InterpreterBase, ErrorType
-from type_value import Type, create_value
+from type_value import Type, create_value, create_default_value
+
 
 class VariableDef:
     # var_type is a Type() and value is a Value()
@@ -98,7 +99,8 @@ class ClassDef:
             self.__check_for_inheritance_and_set_superclass_info(class_source)
         )
         self.__create_field_list(class_source[fields_and_methods_start_index:])
-        self.__create_method_list(class_source[fields_and_methods_start_index:])
+        self.__create_method_list(
+            class_source[fields_and_methods_start_index:])
 
     # get the classname
     def get_name(self):
@@ -119,13 +121,15 @@ class ClassDef:
     def __check_for_inheritance_and_set_superclass_info(self, class_source):
         if class_source[2] != InterpreterBase.INHERITS_DEF:
             self.super_class = None
-            return 2  # fields and method definitions start after [class classname ...], jump to the correct place to continue parsing
+            # fields and method definitions start after [class classname ...], jump to the correct place to continue parsing
+            return 2
 
         super_class_name = class_source[3]
         self.super_class = self.interpreter.get_class_def(
             super_class_name, class_source[0].line_num
         )
-        return 4  # fields and method definitions start after [class classname inherits baseclassname ...]
+        # fields and method definitions start after [class classname inherits baseclassname ...]
+        return 4
 
     def __create_field_list(self, class_body):
         self.fields = []  # array of VariableDefs with default values set
@@ -148,9 +152,19 @@ class ClassDef:
     # field def: [field typename varname defvalue]
     # returns a VariableDef object that represents that field
     def __create_variable_def_from_field(self, field_def):
-        var_def = VariableDef(
-            Type(field_def[1]), field_def[2], create_value(field_def[3])
-        )
+        # check whether we should use default field
+        if len(field_def) == 3:
+            default_field_type = Type(field_def[1])
+            default_field_val = create_default_value(default_field_type)
+            var_def = VariableDef(
+                default_field_type, field_def[2], default_field_val
+            )
+
+        else:
+            var_def = VariableDef(
+                Type(field_def[1]), field_def[2], create_value(field_def[3])
+            )
+
         if not self.interpreter.check_type_compatibility(
             var_def.type, var_def.value.type(), True
         ):
@@ -184,7 +198,7 @@ class ClassDef:
     def __check_method_names_and_types(self, method_def):
         if not self.interpreter.is_valid_type(
             method_def.return_type.type_name
-        ) and method_def.return_type != Type(InterpreterBase.NOTHING_DEF): #checks that return type isn't a defined type or void
+        ) and method_def.return_type != Type(InterpreterBase.NOTHING_DEF):  # checks that return type isn't a defined type or void
             self.interpreter.error(
                 ErrorType.TYPE_ERROR,
                 "invalid return type for method " + method_def.method_name,
