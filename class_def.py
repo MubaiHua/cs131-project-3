@@ -37,7 +37,7 @@
 
 from intbase import InterpreterBase, ErrorType
 from type_value import Type, create_value, create_default_value
-
+from copy import deepcopy
 
 class VariableDef:
     # var_type is a Type() and value is a Value()
@@ -54,7 +54,6 @@ class VariableDef:
 # [method return_type method_name [[type1 param1] [type2 param2] ...] [statement]]
 class MethodDef:
     def __init__(self, method_source):
-        self.line_num = method_source[0].line_num  # used for errors
         self.method_name = method_source[2]
         if method_source[1] == InterpreterBase.VOID_DEF:
             self.return_type = Type(InterpreterBase.NOTHING_DEF)
@@ -126,7 +125,7 @@ class ClassDef:
 
         super_class_name = class_source[3]
         self.super_class = self.interpreter.get_class_def(
-            super_class_name, class_source[0].line_num
+            super_class_name
         )
         # fields and method definitions start after [class classname inherits baseclassname ...]
         return 4
@@ -142,7 +141,6 @@ class ClassDef:
                     self.interpreter.error(
                         ErrorType.NAME_ERROR,
                         "duplicate field " + member[2],
-                        member[0].line_num,
                     )
                 var_def = self.__create_variable_def_from_field(member)
                 self.fields.append(var_def)
@@ -152,9 +150,22 @@ class ClassDef:
     # field def: [field typename varname defvalue]
     # returns a VariableDef object that represents that field
     def __create_variable_def_from_field(self, field_def):
+        field_type = field_def[1]
+        
+        if '@' in field_type: #if the field type is a template class
+            def_list = field_type.split("@")
+            template_class_name = def_list[0]
+            template_class_parameterized_type = def_list[1:]
+            #if this template class with these parameterized types is not declared
+            if not self.interpreter.declared_template_class_exist(template_class_name, template_class_parameterized_type): 
+                template_class_def = self.interpreter.get_template_class_def(template_class_name)
+                template_class_def.generate_regular_class(template_class_parameterized_type)
+            
+            field_type = template_class_name + "@_@" + "@_@".join(template_class_parameterized_type)
+
         # check whether we should use default field
         if len(field_def) == 3:
-            default_field_type = Type(field_def[1])
+            default_field_type = Type(field_type)
             default_field_val = create_default_value(default_field_type)
             var_def = VariableDef(
                 default_field_type, field_def[2], default_field_val
@@ -162,7 +173,7 @@ class ClassDef:
 
         else:
             var_def = VariableDef(
-                Type(field_def[1]), field_def[2], create_value(field_def[3])
+                Type(field_type), field_def[2], create_value(field_def[3])
             )
 
         if not self.interpreter.check_type_compatibility(
@@ -171,7 +182,6 @@ class ClassDef:
             self.interpreter.error(
                 ErrorType.TYPE_ERROR,
                 "invalid type/type mismatch with field " + field_def[2],
-                field_def[0].line_num,
             )
         return var_def
 
@@ -186,7 +196,6 @@ class ClassDef:
                     self.interpreter.error(
                         ErrorType.NAME_ERROR,
                         "duplicate method " + method_def.method_name,
-                        member[0].line_num,
                     )
                 self.__check_method_names_and_types(method_def)
                 self.methods.append(method_def)
@@ -202,7 +211,6 @@ class ClassDef:
             self.interpreter.error(
                 ErrorType.TYPE_ERROR,
                 "invalid return type for method " + method_def.method_name,
-                method_def.line_num,
             )
         used_param_names = set()
         for param in method_def.formal_params:
@@ -210,11 +218,57 @@ class ClassDef:
                 self.interpreter.error(
                     ErrorType.NAME_ERROR,
                     "duplicate formal parameter " + param.name,
-                    method_def.line_num,
                 )
             if not self.interpreter.is_valid_type(param.type.type_name):
                 self.interpreter.error(
                     ErrorType.TYPE_ERROR,
                     "invalid type for parameter " + param.name,
-                    method_def.line_num,
                 )
+
+class TemplateClass:
+    def __init__(self, class_source, interpreter) -> None:
+        self.interpreter = interpreter
+        self.name = class_source[1]
+        self.class_source = class_source
+        self.__get_parameterized_types()
+
+    def __get_parameterized_types(self):
+        self.parameterized_types = []
+        for parameterized_type in self.class_source[2]:
+            self.parameterized_types.append(parameterized_type)
+
+    def generate_regular_class(self, declared_types):
+        if len(declared_types) != len(self.parameterized_types):
+            self.interpreter.error(
+                ErrorType.NAME_ERROR,
+                "missing parameterized types"
+            )
+
+        regular_class = deepcopy(self.class_source)
+        regular_class[0] = InterpreterBase.CLASS_DEF #replace tclass to class
+        declared_class_name = regular_class[1]
+        
+        regular_class.pop(2) #remove parameterized types
+
+        for parameterized_type, declared_type in zip(self.parameterized_types, declared_types):
+            if not self.interpreter.is_valid_type(declared_type):
+                self.interpreter.error(
+                    ErrorType.TYPE_ERROR,
+                    f"invalid parameterized type {declared_type}"
+                )
+
+            regular_class = self.__replace_string(regular_class, parameterized_type, declared_type)
+            declared_class_name+="@_@"+declared_type # generate new class name for declared template class
+        
+        regular_class[1] = declared_class_name
+        self.interpreter.add_declared_template_class(regular_class)
+        self.interpreter.add_template_class_type(self.class_source[1], declared_types)
+
+    def __replace_string(self, nested_list, old_str, new_str):
+        if isinstance(nested_list, list):
+            for i in range(len(nested_list)):
+                nested_list[i] = self.__replace_string(nested_list[i], old_str, new_str)
+        elif isinstance(nested_list, str):
+            nested_list = nested_list.replace(old_str, new_str)
+        return nested_list
+        

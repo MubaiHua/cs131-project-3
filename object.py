@@ -18,7 +18,8 @@ class ObjectDef:
 
     # class_def is a ClassDef object
     def __init__(self, interpreter, class_def, anchor_object=None, trace_output=False):
-        self.interpreter = interpreter  # objref to interpreter object. used to report errors, get input, produce output
+        # objref to interpreter object. used to report errors, get input, produce output
+        self.interpreter = interpreter
         self.class_def = class_def
 
         if anchor_object is None:
@@ -28,8 +29,10 @@ class ObjectDef:
         self.trace_output = trace_output
         self.__instantiate_fields()
         self.__map_method_names_to_method_definitions()
-        self.__create_map_of_operations_to_lambdas()  # sets up maps to facilitate binary and unary operations, e.g., (+ 5 6)
-        self.__init_superclass_if_any()  # construct default values for superclass fields all the way to the base class
+        # sets up maps to facilitate binary and unary operations, e.g., (+ 5 6)
+        self.__create_map_of_operations_to_lambdas()
+        # construct default values for superclass fields all the way to the base class
+        self.__init_superclass_if_any()
 
     def __get_obj_with_method(self, start_obj, method_name, actual_params):
         cur_obj = start_obj
@@ -52,13 +55,12 @@ class ObjectDef:
     # actual_params is a list of Value objects; all parameters are passed by value
     # the caller passes in its line number so if there's an error (e.g., mismatched # of parameters or unknown
     # method name) we can generate an error at the source (where the call is initiated) for better context
-    def call_method(self, method_name, actual_params, super_only, line_num_of_caller):
+    def call_method(self, method_name, actual_params, super_only):
         # check to see if we have a method in this class or its base class(es) matching this signature
         if self.__get_obj_with_method(self, method_name, actual_params) is None:
             self.interpreter.error(
                 ErrorType.NAME_ERROR,
                 "unknown method " + method_name,
-                line_num_of_caller,
             )
 
         # Yes, we have a method with the right name/parameters known to this class or its base classes...
@@ -69,7 +71,8 @@ class ObjectDef:
             anchor = self
         else:
             anchor = self.anchor_object
-        obj_to_call_on = self.__get_obj_with_method(anchor, method_name, actual_params)
+        obj_to_call_on = self.__get_obj_with_method(
+            anchor, method_name, actual_params)
 
         method_def = obj_to_call_on.methods[method_name]
 
@@ -84,7 +87,6 @@ class ObjectDef:
                 self.interpreter.error(
                     ErrorType.NAME_ERROR,
                     "duplicate formal param name " + formal.name,
-                    method_def.line_num,
                 )
             env.set(formal_copy.name, formal_copy)
         # since each method has a single top-level statement, execute it.
@@ -121,7 +123,7 @@ class ObjectDef:
     # - return value is a value of type Value which is the returned value from the function
     def __execute_statement(self, env, return_type, code):
         if self.trace_output:
-            print(f"{code[0].line_num}: {code}")
+            print(code)
         tok = code[0]
         if tok == InterpreterBase.BEGIN_DEF:
             return self.__execute_begin(env, return_type, code)
@@ -146,24 +148,25 @@ class ObjectDef:
         else:
             # Report error via interpreter
             self.interpreter.error(
-                ErrorType.SYNTAX_ERROR, "unknown statement " + tok, tok.line_num
+                ErrorType.SYNTAX_ERROR, "unknown statement " + tok
             )
 
     # This method is used for both the begin and let statements
     # (begin (statement1) (statement2) ... (statementn))
     # (let ((type1 var1 defaultvalue1) ... (typen varn defaultvaluen)) (statement1) ... (statementn))
     def __execute_begin(self, env, return_type, code, has_vardef=False):
-        if has_vardef: #handles the let case
+        if has_vardef:  # handles the let case
             code_start = 2
             env.block_nest()
-            self.__add_locals_to_env(env, code[1], code[0].line_num)
-        else: #handles the begin case
+            self.__add_locals_to_env(env, code[1])
+        else:  # handles the begin case
             code_start = 1
 
         status = ObjectDef.STATUS_PROCEED
         return_value = None
         for statement in code[code_start:]:
-            status, return_value = self.__execute_statement(env, return_type, statement)
+            status, return_value = self.__execute_statement(
+                env, return_type, statement)
             if status == ObjectDef.STATUS_RETURN:
                 break
         # if we run through the entire block without a return, then just return proceed
@@ -173,27 +176,38 @@ class ObjectDef:
         return status, return_value  # could be a valid return of a value or an error
 
     # add all local variables defined in a let to the environment
-    def __add_locals_to_env(self, env, var_defs, line_number):
+    def __add_locals_to_env(self, env, var_defs):
         for var_def in var_defs:
             # vardef in the form of (typename varname defvalue)
-            var_type = Type(var_def[0])
+            var_type_name = var_def[0]
+            if '@' in var_type_name:
+                def_list = var_type_name.split("@")
+                template_class_name = def_list[0]
+                template_class_parameterized_type = def_list[1:]
+                #if this template class with these parameterized types is not declared
+                if not self.interpreter.declared_template_class_exist(template_class_name, template_class_parameterized_type): 
+                    template_class_def = self.interpreter.get_template_class_def(template_class_name)
+                    template_class_def.generate_regular_class(template_class_parameterized_type)
+            
+                var_type_name = template_class_name + "@_@" + "@_@".join(template_class_parameterized_type)
+
+            var_type = Type(var_type_name)
             var_name = var_def[1]
 
-            #set defualt value for local variable
+            # set defualt value for local variable
             if len(var_def) == 2:
                 default_value = create_default_value(var_type)
             else:
                 default_value = create_value(var_def[2])
-                
+
             # make sure default value for each local is of a matching type
             self.__check_type_compatibility(
-                var_type, default_value.type(), True, line_number
+                var_type, default_value.type(), True
             )
             if not env.create_new_symbol(var_name):
                 self.interpreter.error(
                     ErrorType.NAME_ERROR,
                     "duplicate local variable name " + var_name,
-                    line_number,
                 )
             var_def = VariableDef(var_type, var_name, default_value)
             env.set(var_name, var_def)
@@ -208,14 +222,14 @@ class ObjectDef:
     # statement version of a method call; there's also an expression version of a method call below
     def __execute_call(self, env, code):
         return ObjectDef.STATUS_PROCEED, self.__execute_call_aux(
-            env, code, code[0].line_num
+            env, code, 
         )
 
     # (set varname expression), where expression could be a value, or a (+ ...)
     def __execute_set(self, env, code):
-        val = self.__evaluate_expression(env, code[2], code[0].line_num)
+        val = self.__evaluate_expression(env, code[2])
         self.__set_variable_aux(
-            env, code[1], val, code[0].line_num
+            env, code[1], val
         )  # checks/reports type and name errors
         return ObjectDef.STATUS_PROCEED, None
 
@@ -225,13 +239,15 @@ class ObjectDef:
             # [return] with no return value; return default value for type
             return ObjectDef.STATUS_RETURN, None
         else:
-            result = self.__evaluate_expression(env, code[1], code[0].line_num)
+            result = self.__evaluate_expression(env, code[1])
             # CAREY FIX
             if result.is_typeless_null():
-                self.__check_type_compatibility(return_type, result.type(), True, code[0].line_num) 
-                result = Value(return_type, None)  # propagate return type to null ###
+                self.__check_type_compatibility(
+                    return_type, result.type(), True)
+                # propagate return type to null ###
+                result = Value(return_type, None)
         self.__check_type_compatibility(
-            return_type, result.type(), True, code[0].line_num
+            return_type, result.type(), True
         )
         return ObjectDef.STATUS_RETURN, result
 
@@ -240,7 +256,7 @@ class ObjectDef:
         output = ""
         for expr in code[1:]:
             # TESTING NOTE: Will not test printing of object references
-            term = self.__evaluate_expression(env, expr, code[0].line_num)
+            term = self.__evaluate_expression(env, expr)
             val = term.value()
             typ = term.type()
             if typ == ObjectDef.BOOL_TYPE_CONST:
@@ -261,32 +277,31 @@ class ObjectDef:
         else:
             val = Value(ObjectDef.INT_TYPE_CONST, int(inp))
 
-        self.__set_variable_aux(env, code[1], val, code[0].line_num)
+        self.__set_variable_aux(env, code[1], val)
         return ObjectDef.STATUS_PROCEED, None
 
     # helper method used to set either parameter variables or member fields; parameters currently shadow
     # member fields
-    def __set_variable_aux(self, env, var_name, value, line_num):
+    def __set_variable_aux(self, env, var_name, value):
         # parameters shadows fields, locals shadow parameters (and outer-block locals)
         if self.__set_local_or_param(
-            env, var_name, value, line_num
+            env, var_name, value
         ):  # may report a type error
             return
-        if self.__set_field(var_name, value, line_num):  # may report a type error
+        if self.__set_field(var_name, value):  # may report a type error
             return
         self.interpreter.error(
-            ErrorType.NAME_ERROR, "unknown field/variable " + var_name, line_num
+            ErrorType.NAME_ERROR, "unknown field/variable " + var_name
         )
 
     # (if expression (statement) (statement) ) where expresion could be a boolean constant (e.g., true), member
     # variable without ()s, or a boolean expression in parens, like (> 5 a)
     def __execute_if(self, env, return_type, code):
-        condition = self.__evaluate_expression(env, code[1], code[0].line_num)
+        condition = self.__evaluate_expression(env, code[1], )
         if condition.type() != ObjectDef.BOOL_TYPE_CONST:
             self.interpreter.error(
                 ErrorType.TYPE_ERROR,
                 "non-boolean if condition " + ' '.join(x for x in code[1]),
-                code[0].line_num,
             )
         if condition.value():
             status, return_value = self.__execute_statement(
@@ -305,17 +320,19 @@ class ObjectDef:
     # or a boolean expression in parens, like (> 5 a)
     def __execute_while(self, env, return_type, code):
         while True:
-            condition = self.__evaluate_expression(env, code[1], code[0].line_num)
+            condition = self.__evaluate_expression(
+                env, code[1])
             if condition.type() != ObjectDef.BOOL_TYPE_CONST:
                 self.interpreter.error(
                     ErrorType.TYPE_ERROR,
-                    "non-boolean while condition " + ' '.join(x for x in code[1]),
-                    code[0].line_num,
+                    "non-boolean while condition " +
+                    ' '.join(x for x in code[1]),
                 )
             if not condition.value():  # condition is false, exit loop immediately
                 return ObjectDef.STATUS_PROCEED, None
             # condition is true, run body of while loop
-            status, return_value = self.__execute_statement(env, return_type, code[2])
+            status, return_value = self.__execute_statement(
+                env, return_type, code[2])
             if status == ObjectDef.STATUS_RETURN:
                 return (
                     status,
@@ -333,7 +350,7 @@ class ObjectDef:
     # given an expression, return a Value object with the expression's evaluated result
     # expressions could be: constants (true, 5, "blah"), variables (e.g., x), arithmetic/string/logical expressions
     # like (+ 5 6), (+ "abc" "def"), (> a 5), method calls (e.g., (call me foo)), or instantiations (e.g., new dog_class)
-    def __evaluate_expression(self, env, expr, line_num_of_statement):
+    def __evaluate_expression(self, env, expr):
         if type(expr) is not list:
             # locals shadow member variables
             var_def = env.get(expr)
@@ -354,13 +371,14 @@ class ObjectDef:
             self.interpreter.error(
                 ErrorType.NAME_ERROR,
                 "invalid field or parameter " + expr,
-                line_num_of_statement,
             )
 
         operator = expr[0]
         if operator in self.binary_op_list:
-            operand1 = self.__evaluate_expression(env, expr[1], line_num_of_statement)
-            operand2 = self.__evaluate_expression(env, expr[2], line_num_of_statement)
+            operand1 = self.__evaluate_expression(
+                env, expr[1])
+            operand2 = self.__evaluate_expression(
+                env, expr[2])
             if (
                 operand1.type() == operand2.type()
                 and operand1.type() == ObjectDef.INT_TYPE_CONST
@@ -369,7 +387,6 @@ class ObjectDef:
                     self.interpreter.error(
                         ErrorType.TYPE_ERROR,
                         "invalid operator applied to ints",
-                        line_num_of_statement,
                     )
                 return self.binary_ops[InterpreterBase.INT_DEF][operator](
                     operand1, operand2
@@ -382,7 +399,6 @@ class ObjectDef:
                     self.interpreter.error(
                         ErrorType.TYPE_ERROR,
                         "invalid operator applied to strings",
-                        line_num_of_statement,
                     )
                 return self.binary_ops[InterpreterBase.STRING_DEF][operator](
                     operand1, operand2
@@ -395,7 +411,6 @@ class ObjectDef:
                     self.interpreter.error(
                         ErrorType.TYPE_ERROR,
                         "invalid operator applied to bool",
-                        line_num_of_statement,
                     )
                 return self.binary_ops[InterpreterBase.BOOL_DEF][operator](
                     operand1, operand2
@@ -410,35 +425,44 @@ class ObjectDef:
             self.interpreter.error(
                 ErrorType.TYPE_ERROR,
                 f"operator {operator} applied to two incompatible types",
-                line_num_of_statement,
             )
         if operator in self.unary_op_list:
-            operand = self.__evaluate_expression(env, expr[1], line_num_of_statement)
+            operand = self.__evaluate_expression(
+                env, expr[1])
             if operand.type() == ObjectDef.BOOL_TYPE_CONST:
                 if operator not in self.unary_ops[InterpreterBase.BOOL_DEF]:
                     self.interpreter.error(
                         ErrorType.TYPE_ERROR,
                         "invalid unary operator applied to bool",
-                        line_num_of_statement,
                     )
                 return self.unary_ops[InterpreterBase.BOOL_DEF][operator](operand)
 
         # handle call expression: (call objref methodname p1 p2 p3)
         if operator == InterpreterBase.CALL_DEF:
-            return self.__execute_call_aux(env, expr, line_num_of_statement)
+            return self.__execute_call_aux(env, expr)
         # handle new expression: (new classname)
         if operator == InterpreterBase.NEW_DEF:
-            return self.__execute_new_aux(env, expr, line_num_of_statement)
+            return self.__execute_new_aux(env, expr)
 
     # (new classname)
-    def __execute_new_aux(self, env, code, line_num_of_statement):
+    def __execute_new_aux(self, env, code):
         class_name = code[1]
-        obj = self.interpreter.instantiate(code[1], line_num_of_statement)
+        if '@' in class_name:
+            def_list = class_name.split("@")
+            template_class_name = def_list[0]
+            template_class_parameterized_type = def_list[1:]
+            #if this template class with these parameterized types is not declared
+            if not self.interpreter.declared_template_class_exist(template_class_name, template_class_parameterized_type): 
+                template_class_def = self.interpreter.get_template_class_def(template_class_name)
+                template_class_def.generate_regular_class(template_class_parameterized_type)
+            
+            class_name = template_class_name + "@_@" + "@_@".join(template_class_parameterized_type)
+        obj = self.interpreter.instantiate(class_name)
         return Value(Type(class_name), obj)
 
     # this method is a helper used by call statements and call expressions
     # (call object_ref/me methodname p1 p2 p3)
-    def __execute_call_aux(self, env, code, line_num_of_statement):
+    def __execute_call_aux(self, env, code):
         # determine which object we want to call the method on
         super_only = False
         obj_name = code[1]
@@ -450,25 +474,25 @@ class ObjectDef:
                     ErrorType.TYPE_ERROR,
                     "invalid call to super object by class "
                     + self.class_def.get_name(),
-                    line_num_of_statement,
                 )
             obj = self.super_object
             super_only = True
         else:
             # return a Value() object which has a type and a value
-            obj_val = self.__evaluate_expression(env, obj_name, line_num_of_statement)
+            obj_val = self.__evaluate_expression(
+                env, obj_name)
             if obj_val.is_null():
                 self.interpreter.error(
-                    ErrorType.FAULT_ERROR, "null dereference", line_num_of_statement
+                    ErrorType.FAULT_ERROR, "null dereference"
                 )
             obj = obj_val.value()
         # prepare the actual arguments for passing
         actual_args = []
         for expr in code[3:]:
             actual_args.append(
-                self.__evaluate_expression(env, expr, line_num_of_statement)
+                self.__evaluate_expression(env, expr)
             )
-        return obj.call_method(code[2], actual_args, super_only, line_num_of_statement)
+        return obj.call_method(code[2], actual_args, super_only)
 
     def __map_method_names_to_method_definitions(self):
         self.methods = {}
@@ -481,24 +505,26 @@ class ObjectDef:
         for vardef in self.class_def.get_fields():
             self.fields[vardef.name] = copy.copy(vardef)
 
-    def __set_field(self, field_name, value, line_num):
+    def __set_field(self, field_name, value):
         if field_name not in self.fields:
             return False
         var_def = self.fields[field_name]
-        self.__check_type_compatibility(var_def.type, value.type(), True, line_num)
+        self.__check_type_compatibility(
+            var_def.type, value.type(), True)
         var_def.set_value(value)
         return True
 
-    def __set_local_or_param(self, env, var_name, value, line_num):
+    def __set_local_or_param(self, env, var_name, value):
         var_def = env.get(var_name)
         if var_def is None:
             return False
-        self.__check_type_compatibility(var_def.type, value.type(), True, line_num)
+        self.__check_type_compatibility(
+            var_def.type, value.type(), True)
         var_def.set_value(value)
         return True
 
     def __check_type_compatibility(
-        self, lvalue_type, rvalue_type, for_assignment, line_num
+        self, lvalue_type, rvalue_type, for_assignment
     ):
         if not self.interpreter.check_type_compatibility(
             lvalue_type, rvalue_type, for_assignment
@@ -506,7 +532,6 @@ class ObjectDef:
             self.interpreter.error(
                 ErrorType.TYPE_ERROR,
                 f"type mismatch {lvalue_type.type_name} and {rvalue_type.type_name}",
-                line_num,
             )
 
     def __create_map_of_operations_to_lambdas(self):
