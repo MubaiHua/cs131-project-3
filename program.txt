@@ -8,15 +8,11 @@
   (method int sneaky () 
     (return (call me sneaky2))
   )
-  (method Foo@field_type@field2 getObj () 
-    (return (new Foo@field_type@field2))
-  )
-  (method bool coolio ((Foo@field_type@field2 x)) 
+  (method bool coolio ((field_type x)) 
     (begin
       (try
-          (let ((int z 1) (Foo@field_type@field2 field_type))
+          (let ((int z 1) (field_type field_type "ya"))
             (begin 
-              (set field_type (new Foo@field_type@field2))
               (try
                 (return (== field_type (call me sneaky2)))
                 (return false)
@@ -45,7 +41,8 @@
         (method void main () 
           (let ((Foo@string@int t1) (Foo@Duck@int t2))
              (set t1 (new Foo@string@int))
-             (print (call t1 coolio (call t1 getObj)))
+             (print (call t1 coolio "yeye"))
           )
         )
       )
+      

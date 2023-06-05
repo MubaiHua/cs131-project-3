@@ -269,6 +269,8 @@ class ObjectDef:
             return ObjectDef.STATUS_RETURN, None, execption_val
         else:
             status, result, execption_val = self.__evaluate_expression(env, code[1])
+            if status == ObjectDef.STATUS_EXCEPTION:
+                return ObjectDef.STATUS_EXCEPTION, result, execption_val
             # CAREY FIX
             if result.is_typeless_null():
                 self.__check_type_compatibility(
@@ -283,7 +285,9 @@ class ObjectDef:
         return ObjectDef.STATUS_RETURN, result, execption_val
 
     def __execute_throw(self, env, code):
-        _, exception, execption_val = self.__evaluate_expression(env, code[1])
+        status, exception, execption_val = self.__evaluate_expression(env, code[1])
+        if status == ObjectDef.STATUS_EXCEPTION:
+            return ObjectDef.STATUS_EXCEPTION, None, execption_val
         if exception.type() != Type(InterpreterBase.STRING_DEF):
             self.interpreter.error(
                 ErrorType.TYPE_ERROR,
@@ -386,14 +390,14 @@ class ObjectDef:
         while True:
             status, condition, execption_val = self.__evaluate_expression(
                 env, code[1])
+            if status == ObjectDef.STATUS_EXCEPTION:
+                return status, None, execption_val
             if condition.type() != ObjectDef.BOOL_TYPE_CONST:
                 self.interpreter.error(
                     ErrorType.TYPE_ERROR,
                     "non-boolean while condition " +
                     ' '.join(x for x in code[1]),
                 )
-            if status == ObjectDef.STATUS_EXCEPTION:
-                return status, None, execption_val
             if not condition.value():  # condition is false, exit loop immediately
                 return ObjectDef.STATUS_PROCEED, None, None
             # condition is true, run body of while loop
