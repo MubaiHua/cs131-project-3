@@ -19,6 +19,6 @@ def read_txt_file(file_path):
 # Testing the interpreter
 interpreter = Interpreter()
 brewin_program = read_txt_file(
-    "/home/mubai/CS131/cs131-project-2/program.txt"
+    "program.txt"
 )  # Provide a valid Brewin program here
 interpreter.run(brewin_program)

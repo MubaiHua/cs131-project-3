@@ -12,6 +12,8 @@ class Interpreter(InterpreterBase):
     def __init__(self, console_output=True, inp=None, trace_output=False):
         super().__init__(console_output, inp)
         self.trace_output = trace_output
+        self.template_class_index = {}
+        self.template_class_type = {}
 
     # run a program, provided in an array of strings, one string per line of source code
     # usese the provided BParser class found in parser.py to parse the program into lists
@@ -113,8 +115,6 @@ class Interpreter(InterpreterBase):
             self.class_index[declared_template_class_code[1]] = ClassDef(declared_template_class_code, self)
 
     def __map_template_class(self, program):
-        self.template_class_index = {}
-        self.template_class_type = {}
         for item in program:
             if item[0] == InterpreterBase.TEMPLATE_CLASS_DEF:
                 if item[1] in self.template_class_index:

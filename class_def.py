@@ -160,8 +160,9 @@ class ClassDef:
             if not self.interpreter.declared_template_class_exist(template_class_name, template_class_parameterized_type): 
                 template_class_def = self.interpreter.get_template_class_def(template_class_name)
                 template_class_def.generate_regular_class(template_class_parameterized_type)
+
             
-            field_type = template_class_name + "@_@" + "@_@".join(template_class_parameterized_type)
+            field_type = template_class_name + "@" + "@".join(template_class_parameterized_type)
 
         # check whether we should use default field
         if len(field_def) == 3:
@@ -247,6 +248,10 @@ class TemplateClass:
         regular_class = deepcopy(self.class_source)
         regular_class[0] = InterpreterBase.CLASS_DEF #replace tclass to class
         declared_class_name = regular_class[1]
+
+        #check if template class with these parameterized types already exists
+        if self.interpreter.declared_template_class_exist(declared_class_name, declared_types):
+            return
         
         regular_class.pop(2) #remove parameterized types
 
@@ -258,11 +263,11 @@ class TemplateClass:
                 )
 
             regular_class = self.__replace_string(regular_class, parameterized_type, declared_type)
-            declared_class_name+="@_@"+declared_type # generate new class name for declared template class
+            declared_class_name+="@"+declared_type # generate new class name for declared template class
         
+        self.interpreter.add_template_class_type(regular_class[1], declared_types)
         regular_class[1] = declared_class_name
         self.interpreter.add_declared_template_class(regular_class)
-        self.interpreter.add_template_class_type(self.class_source[1], declared_types)
 
     def __replace_string(self, nested_list, old_str, new_str):
         if isinstance(nested_list, list):
