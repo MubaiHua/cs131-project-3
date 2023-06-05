@@ -90,10 +90,11 @@ class MethodDef:
 # v2 class definition: [class classname [inherits baseclassname] [field1] [field2] ... [method1] [method2] ...]
 # [] denotes optional syntax
 class ClassDef:
-    def __init__(self, class_source, interpreter):
+    def __init__(self, class_source, interpreter, template=False):
         self.interpreter = interpreter
         self.name = class_source[1]
         self.class_source = class_source
+        self.is_template = template
         fields_and_methods_start_index = (
             self.__check_for_inheritance_and_set_superclass_info(class_source)
         )
@@ -198,7 +199,8 @@ class ClassDef:
                         ErrorType.NAME_ERROR,
                         "duplicate method " + method_def.method_name,
                     )
-                self.__check_method_names_and_types(method_def)
+                if not self.is_template:
+                    self.__check_method_names_and_types(method_def)
                 self.methods.append(method_def)
                 self.method_map[method_def.method_name] = method_def
                 methods_defined_so_far.add(method_def.method_name)

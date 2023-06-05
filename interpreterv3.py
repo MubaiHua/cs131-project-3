@@ -112,7 +112,7 @@ class Interpreter(InterpreterBase):
                     ErrorType.TYPE_ERROR,
                     f"Duplicate template class {declared_template_class_code[1]}",
                 )
-            self.class_index[declared_template_class_code[1]] = ClassDef(declared_template_class_code, self)
+            self.class_index[declared_template_class_code[1]] = ClassDef(declared_template_class_code, self, True)
 
     def __map_template_class(self, program):
         for item in program:
