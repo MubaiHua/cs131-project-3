@@ -10,6 +10,7 @@ class ObjectDef:
     # statement execution results
     STATUS_PROCEED = 0
     STATUS_RETURN = 1
+    STATUS_EXCEPTION = 2
 
     # type constants
     INT_TYPE_CONST = Type(InterpreterBase.INT_DEF)
@@ -96,9 +97,11 @@ class ObjectDef:
         # if the method explicitly used the (return expression) statement to return a value, then return that
         # value back to the caller
         if status == ObjectDef.STATUS_RETURN and return_value is not None:
-            return return_value
+            return status, return_value
+        if status == ObjectDef.STATUS_EXCEPTION:
+            return status, return_value
         # The method didn't explicitly return a value, so return the default return type for the method
-        return create_default_value(method_def.get_return_type())
+        return status, create_default_value(method_def.get_return_type())
 
     # def get_me_as_value(self):
     #     return Value(Type(self.class_def.name), self)
@@ -145,6 +148,10 @@ class ObjectDef:
             return self.__execute_print(env, code)
         elif tok == InterpreterBase.LET_DEF:
             return self.__execute_let(env, return_type, code)
+        elif tok == InterpreterBase.THROW_DEF:
+            return self.__execute_throw(env, code)
+        elif tok == InterpreterBase.TRY_DEF:
+            return self.__execute_try(env, return_type, code)
         else:
             # Report error via interpreter
             self.interpreter.error(
@@ -167,7 +174,7 @@ class ObjectDef:
         for statement in code[code_start:]:
             status, return_value = self.__execute_statement(
                 env, return_type, statement)
-            if status == ObjectDef.STATUS_RETURN:
+            if status == ObjectDef.STATUS_RETURN or status == ObjectDef.STATUS_EXCEPTION:
                 break
         # if we run through the entire block without a return, then just return proceed
         # we don't want the enclosing block to exit with a return
@@ -212,6 +219,14 @@ class ObjectDef:
             var_def = VariableDef(var_type, var_name, default_value)
             env.set(var_name, var_def)
 
+    def __add_exception_variable(self, env, exception):
+        var_type = Type(InterpreterBase.STRING_DEF)
+        var_name = InterpreterBase.EXCEPTION_VARIABLE_DEF
+        var_def = VariableDef(var_type, var_name, exception)
+        env.create_new_symbol(var_name)
+        env.set(var_name, var_def)
+
+
     # (let ((type1 var1 defval1) (type2 var2 defval2)) (statement1) (statement2) ...)
     # uses helper function __execute_begin to implement its functionality
     def __execute_let(self, env, return_type, code):
@@ -221,9 +236,12 @@ class ObjectDef:
     # where params are expressions, and expresion could be a value, or a (+ ...)
     # statement version of a method call; there's also an expression version of a method call below
     def __execute_call(self, env, code):
-        return ObjectDef.STATUS_PROCEED, self.__execute_call_aux(
+        status, return_val = self.__execute_call_aux(
             env, code, 
         )
+        if status != ObjectDef.STATUS_EXCEPTION:
+            status = ObjectDef.STATUS_PROCEED
+        return status, return_val 
 
     # (set varname expression), where expression could be a value, or a (+ ...)
     def __execute_set(self, env, code):
@@ -250,6 +268,34 @@ class ObjectDef:
             return_type, result.type(), True
         )
         return ObjectDef.STATUS_RETURN, result
+    
+    def __execute_throw(self, env, code):
+        exception = self.__evaluate_expression(env, code[1])
+        if exception.type() != Type(InterpreterBase.STRING_DEF):
+            self.interpreter.error(
+                ErrorType.TYPE_ERROR,
+                "throw statement should take a parameter of string type",
+            )
+        
+        return ObjectDef.STATUS_EXCEPTION, exception
+    
+    def __execute_try(self, env, return_type, code):
+        try_statements = code[1]
+        catch_statements = code[2]
+        status, return_value = self.__execute_statement(
+            env, return_type, try_statements)
+        if status == ObjectDef.STATUS_RETURN:
+            return status, return_value
+        if status == ObjectDef.STATUS_EXCEPTION:
+            #add exception variable
+            env.block_nest()
+            self.__add_exception_variable(env, return_value)
+            status, return_value = self.__execute_statement(
+            env, return_type, catch_statements)
+            env.block_unnest()
+            return status, return_value
+        
+        return status, return_value
 
     # (print expression1 expression2 ...) where expresion could be a variable, value, or a (+ ...)
     def __execute_print(self, env, code):
@@ -333,7 +379,7 @@ class ObjectDef:
             # condition is true, run body of while loop
             status, return_value = self.__execute_statement(
                 env, return_type, code[2])
-            if status == ObjectDef.STATUS_RETURN:
+            if status == ObjectDef.STATUS_RETURN or status == ObjectDef.STATUS_EXCEPTION:
                 return (
                     status,
                     return_value,
