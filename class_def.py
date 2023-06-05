@@ -241,7 +241,7 @@ class TemplateClass:
     def generate_regular_class(self, declared_types):
         if len(declared_types) != len(self.parameterized_types):
             self.interpreter.error(
-                ErrorType.NAME_ERROR,
+                ErrorType.TYPE_ERROR,
                 "missing parameterized types"
             )
 
