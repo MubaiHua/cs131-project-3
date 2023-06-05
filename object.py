@@ -260,7 +260,7 @@ class ObjectDef:
         self.__set_variable_aux(
             env, code[1], val
         )  # checks/reports type and name errors
-        return status, None, execption_val
+        return ObjectDef.STATUS_PROCEED, None, execption_val
 
     # (return expression) where expresion could be a value, or a (+ ...)
     def __execute_return(self, env, return_type, execption_val, code):
@@ -395,7 +395,7 @@ class ObjectDef:
             if status == ObjectDef.STATUS_EXCEPTION:
                 return status, None, execption_val
             if not condition.value():  # condition is false, exit loop immediately
-                return ObjectDef.STATUS_PROCEED, None
+                return ObjectDef.STATUS_PROCEED, None, None
             # condition is true, run body of while loop
             
             status, return_value, execption_val = self.__execute_statement(
