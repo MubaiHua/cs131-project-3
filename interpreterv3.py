@@ -17,7 +17,6 @@ class Interpreter(InterpreterBase):
     # usese the provided BParser class found in parser.py to parse the program into lists
     def run(self, program):
         status, parsed_program = BParser.parse(program)
-        print(parsed_program)
         if not status:
             super().error(
                 ErrorType.SYNTAX_ERROR, f"Parse error on program: {parsed_program}"
@@ -146,27 +145,3 @@ class Interpreter(InterpreterBase):
                 f"No template class named {template_class_name} found",
             )
         return self.template_class_index[template_class_name]
-
-
-def read_txt_file(file_path):
-    """
-    Reads a text file and returns each line as a list of strings.
-
-    Parameters:
-        file_path (str): The path to the text file.
-
-    Returns:
-        list: A list of strings, where each string is a line from the text file.
-    """
-    with open(file_path, "r") as f:
-        lines = f.readlines()
-        lines = [line.strip() for line in lines]
-    return lines
-
-
-# Testing the interpreter
-interpreter = Interpreter()
-brewin_program = read_txt_file(
-    "program.txt"
-)  # Provide a valid Brewin program here
-interpreter.run(brewin_program)
